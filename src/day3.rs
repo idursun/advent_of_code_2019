@@ -6,18 +6,6 @@ enum Direction {
     Left,
 }
 
-#[derive(Debug)]
-struct Instruction(Direction, i32);
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-struct Point(i32, i32);
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-struct Line {
-    from: Point,
-    to: Point,
-}
-
 impl From<char> for Direction {
     fn from(c: char) -> Self {
         match c {
@@ -30,7 +18,26 @@ impl From<char> for Direction {
     }
 }
 
+#[derive(Debug)]
+struct Instruction(Direction, i32);
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct Point(i32, i32);
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct Line {
+    from: Point,
+    to: Point,
+}
+
 impl Line {
+    fn distance(&self) -> i32 {
+        std::cmp::max(
+            (self.from.1 - self.to.1).abs(),
+            (self.from.0 - self.to.0).abs(),
+        )
+    }
+
     fn is_vertical(&self) -> bool {
         self.from.0 == self.to.0
     }
@@ -65,10 +72,10 @@ fn get_line_segments(start: Point, instructions: Vec<Instruction>) -> Vec<Line> 
     let mut current = start;
     for inst in instructions {
         let new_point = match inst {
-            Instruction(Direction::Right, ref amount) => Point(current.0 + amount, current.1),
-            Instruction(Direction::Left, ref amount) => Point(current.0 - amount, current.1),
-            Instruction(Direction::Up, ref amount) => Point(current.0, current.1 + amount),
-            Instruction(Direction::Down, ref amount) => Point(current.0, current.1 - amount),
+            Instruction(Direction::Right, amount) => Point(current.0 + amount, current.1),
+            Instruction(Direction::Left, amount) => Point(current.0 - amount, current.1),
+            Instruction(Direction::Up, amount) => Point(current.0, current.1 + amount),
+            Instruction(Direction::Down, amount) => Point(current.0, current.1 - amount),
         };
         result.push(Line {
             from: current.clone(),
@@ -95,6 +102,8 @@ fn main() {
     let segments0 = get_line_segments(Point(0, 0), line0);
     let segments1 = get_line_segments(Point(0, 0), line1);
     let mut min_dist = i32::max_value();
+    let mut dist_a = 0;
+    let mut dist_b = 0;
     for sega in &segments0 {
         for segb in &segments1 {
             if sega.is_horizontal() && segb.is_vertical() {
@@ -106,10 +115,12 @@ fn main() {
                     && min_by < sega.from.1
                     && sega.from.1 < max_by
                 {
-                    let dist = segb.from.0.abs() + sega.from.1.abs();
-                    if dist < min_dist {
-                        min_dist = dist;
-                    }
+                    let intersection = Point(segb.from.0, sega.from.1);
+                    let current_dist = dist_a
+                        + dist_b
+                        + (sega.from.0 - intersection.0).abs()
+                        + (segb.from.1 - intersection.1).abs();
+                    min_dist = std::cmp::min(min_dist, current_dist);
                 }
             }
 
@@ -122,13 +133,18 @@ fn main() {
                     && min_bx < sega.from.0
                     && sega.from.0 < max_bx
                 {
-                    let dist = segb.from.1.abs() + sega.from.0.abs();
-                    if dist < min_dist {
-                        min_dist = dist;
-                    }
+                    let intersection = Point(sega.from.0, segb.from.1);
+                    let current_dist = dist_a
+                        + dist_b
+                        + (sega.from.1 - intersection.1).abs()
+                        + (segb.from.0 - intersection.0).abs();
+                    min_dist = std::cmp::min(min_dist, current_dist);
                 }
             }
+            dist_b += segb.distance();
         }
+        dist_b = 0;
+        dist_a += sega.distance();
     }
     println!("{}", min_dist);
 }
