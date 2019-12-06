@@ -43,7 +43,11 @@ enum Instruction {
     Addition(Parameter, Parameter, i32),
     Multiply(Parameter, Parameter, i32),
     LoadInput(i32),
-    LoadOutput(i32),
+    LoadOutput(Parameter),
+    JumpIfTrue(Parameter, Parameter),
+    JumpIfFalse(Parameter, Parameter),
+    LessThan(Parameter, Parameter, i32),
+    Equals(Parameter, Parameter, i32),
     Halt,
 }
 
@@ -55,6 +59,24 @@ struct VM {
 }
 
 impl VM {
+    fn from_input(input: &str) -> Self {
+        let opcodes = input
+            .split(',')
+            .map(|c: &str| c.trim_end_matches('\n').parse::<i32>().unwrap())
+            .collect::<Vec<_>>();
+
+        VM {
+            mem: Mem(opcodes),
+            ip: 0,
+            input: 1,
+            output: 0,
+        }
+    }
+
+    fn set_input(&mut self, input: i32) {
+        self.input = input;
+    }
+
     fn fetch(&mut self) -> i32 {
         let ret = self.mem.0[self.ip];
         self.ip += 1;
@@ -78,7 +100,25 @@ impl VM {
                 self.fetch(),
             ),
             3 => Instruction::LoadInput(self.fetch()),
-            4 => Instruction::LoadOutput(self.fetch()),
+            4 => Instruction::LoadOutput(Parameter(pm1.into(), self.fetch())),
+            5 => Instruction::JumpIfTrue(
+                Parameter(pm1.into(), self.fetch()),
+                Parameter(pm2.into(), self.fetch()),
+            ),
+            6 => Instruction::JumpIfFalse(
+                Parameter(pm1.into(), self.fetch()),
+                Parameter(pm2.into(), self.fetch()),
+            ),
+            7 => Instruction::LessThan(
+                Parameter(pm1.into(), self.fetch()),
+                Parameter(pm2.into(), self.fetch()),
+                self.fetch(),
+            ),
+            8 => Instruction::Equals(
+                Parameter(pm1.into(), self.fetch()),
+                Parameter(pm2.into(), self.fetch()),
+                self.fetch(),
+            ),
             99 => Instruction::Halt,
             _ => panic!("unexpected opcode {}", lowdigits),
         }
@@ -106,8 +146,38 @@ impl VM {
                         self.mem.write(p1, self.input);
                     }
                     Instruction::LoadOutput(p1) => {
-                        self.output = self.mem.read(Parameter(ParameterMode::Address, p1));
+                        self.output = self.mem.read(p1);
                         println!("load output {}", self.output);
+                    }
+                    Instruction::JumpIfTrue(p1, p2) => {
+                        let cond = self.mem.read(p1);
+                        if cond != 0 {
+                            self.ip = self.mem.read(p2) as usize;
+                        }
+                    }
+                    Instruction::JumpIfFalse(p1, p2) => {
+                        let cond = self.mem.read(p1);
+                        if cond == 0 {
+                            self.ip = self.mem.read(p2) as usize;
+                        }
+                    }
+                    Instruction::LessThan(p1, p2, p3) => {
+                        let p1 = self.mem.read(p1);
+                        let p2 = self.mem.read(p2);
+                        if p1 < p2 {
+                            self.mem.write(p3, 1);
+                        } else {
+                            self.mem.write(p3, 0);
+                        }
+                    }
+                    Instruction::Equals(p1, p2, p3) => {
+                        let p1 = self.mem.read(p1);
+                        let p2 = self.mem.read(p2);
+                        if p1 == p2 {
+                            self.mem.write(p3, 1);
+                        } else {
+                            self.mem.write(p3, 0);
+                        }
                     }
                 }
             }
@@ -116,20 +186,54 @@ impl VM {
 }
 
 fn main() {
-    //let input = "1,0,0,3,1,1,2,3,1,3,4,3,1,5,0,3,2,6,1,19,1,19,5,23,2,10,23,27,2,27,13,31,1,10,31,35,1,35,9,39,2,39,13,43,1,43,5,47,1,47,6,51,2,6,51,55,1,5,55,59,2,9,59,63,2,6,63,67,1,13,67,71,1,9,71,75,2,13,75,79,1,79,10,83,2,83,9,87,1,5,87,91,2,91,6,95,2,13,95,99,1,99,5,103,1,103,2,107,1,107,10,0,99,2,0,14,0";
-    let input = include_str!("day5.input");
-    let opcodes = input
-        .split(',')
-        .map(|c: &str| c.trim_end_matches('\n').parse::<i32>().unwrap())
-        .collect::<Vec<_>>();
-
-    let mut vm = VM {
-        mem: Mem(opcodes),
-        ip: 0,
-        input: 1,
-        output: 0,
-    };
-
+    let mut vm = VM::from_input(include_str!("day5.input"));
+    vm.set_input(5);
     vm.execute();
     println!("output: {}", vm.output);
+}
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_equalto_position_mode() {
+        let mut vm = VM::from_input("3,9,8,9,10,9,4,9,99,-1,8");
+        vm.set_input(8);
+        vm.execute();
+        assert_eq!(vm.output, 1);
+    }
+
+    #[test]
+    fn test_equalto_immediate_mode() {
+        let mut vm = VM::from_input("3,3,1108,-1,8,3,4,3,99");
+        vm.set_input(8);
+        vm.execute();
+        assert_eq!(vm.output, 1);
+    }
+
+    #[test]
+    fn test_lessthan_position_mode() {
+        let mut vm = VM::from_input("3,9,7,9,10,9,4,9,99,-1,8");
+        vm.set_input(8);
+        vm.execute();
+        assert_eq!(vm.output, 0);
+    }
+
+    #[test]
+    fn test_lessthan_immediate_mode() {
+        let mut vm = VM::from_input("3,3,1107,-1,8,3,4,3,99");
+        vm.set_input(8);
+        vm.execute();
+        assert_eq!(vm.output, 0);
+    }
+
+    #[test]
+    fn test_sample() {
+        let mut vm = VM::from_input("3,21,1008,21,8,20,1005,20,22,107,8,21,20,1006,20,31,1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99");
+        vm.set_input(7);
+        vm.execute();
+        assert_eq!(vm.output, 999);
+    }
 }
